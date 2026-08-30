@@ -43,7 +43,9 @@ class DoorBell:
                 entry = attended_list[i].split(',')
                 existing_name = entry[0]
                 if existing_name.lower() == name.lower():
-                    written_date_time = datetime.strptime(entry[1], '%d/%m/%Y %H:%M:%S')
+                    # Every line except the last keeps its trailing '\n' after
+                    # readlines(), which strptime rejects.
+                    written_date_time = datetime.strptime(entry[1].strip(), '%d/%m/%Y %H:%M:%S')
                     print('written date: ' + written_date_time.strftime('%d/%m/%Y %H:%M:%S'))
                     now = datetime.now()
                     print('difference: ' + str((now - written_date_time).total_seconds()))
@@ -82,14 +84,19 @@ class DoorBell:
             encode_frame = face_recognition.face_encodings(frame_small, face_loc)
 
             for encode_face, face_location in zip(encode_frame, face_loc):
-                matches = face_recognition.compare_faces(self.encoded_faces, encode_face)
-                face_distance = face_recognition.face_distance(self.encoded_faces, encode_face)
+                # An empty whitelist would make np.argmin raise on an empty
+                # array; treat every face as unknown instead.
+                matched = False
+                if self.encoded_faces:
+                    matches = face_recognition.compare_faces(self.encoded_faces, encode_face)
+                    face_distance = face_recognition.face_distance(self.encoded_faces, encode_face)
 
-                # print(f"Face distance: {face_distance}")
+                    # print(f"Face distance: {face_distance}")
 
-                match_index = np.argmin(face_distance)
+                    match_index = np.argmin(face_distance)
+                    matched = matches[match_index]
 
-                if matches[match_index]:
+                if matched:
                     name = self.w_list_images[match_index][1]
                     print(f"Recognized: {name}")
 
