@@ -1,0 +1,14 @@
+# Normalise text in the index; check out with the platform's native line endings.
+* text=auto
+
+# Sample and demo faces. These carry a .jpg suffix but are actually WebP, so pin
+# them as binary rather than letting content detection decide.
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary
+
+# Test fixtures are byte-exact on purpose: attendance_legacy.csv reproduces a log
+# written with CRLF and no trailing newline, which is the shape the appender has
+# to cope with. Any line-ending normalisation would destroy what it tests.
+tests/data/* -text
