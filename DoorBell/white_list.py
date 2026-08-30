@@ -30,16 +30,26 @@ class WhiteList:
 
     def _encode_faces(self) -> bool:
         """Encodes each white listed person's face and stores them in a list, encoded_faces.
-        Returns True iff encoded_face is non-empty i.e. it has been successfully encoded.
+        A person whose face cannot be encoded is dropped from the whitelist, so
+        white_list and encoded_faces always stay index-aligned.
+        Returns True iff every face has been successfully encoded.
         """
+        all_encoded = True
+        encodable = []
         for person in self.white_list:
             image = person[0]
             encoded_face = face_recognition.face_encodings(image)
             if encoded_face:
                 self._encoded_faces.append(encoded_face[0])
+                encodable.append(person)
             else:
-                return False
-        return True
+                print(f"Warning: no face found for '{person[1]}', removed from white list.")
+                all_encoded = False
+        self.white_list = encodable
+        kept_names = {person[1] for person in encodable}
+        self.white_list_names = [name for name in self.white_list_names
+                                 if os.path.splitext(name)[0] in kept_names]
+        return all_encoded
 
     def get_white_lists(self) -> list[tuple]:
         """ Returns list of white listed person's faces as a cv2 image format."""
@@ -60,10 +70,12 @@ class WhiteList:
         added to the directory, <self.path>.path
         Returns True iff encoded_face is not None i.e. it has been successfully encoded.
         """
-        self.white_list.append((img, os.path.splitext(person)[0]))
         encoded_face = face_recognition.face_encodings(img)
 
+        # Append only when encoding succeeds, so white_list and encoded_faces
+        # stay index-aligned.
         if encoded_face:
+            self.white_list.append((img, os.path.splitext(person)[0]))
             self._encoded_faces.append(encoded_face[0])
             return True
         return False
