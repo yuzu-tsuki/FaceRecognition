@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import face_recognition
 import os
-from white_list import WhiteList
+from .whitelist import WhiteList
 from datetime import datetime
 
 
