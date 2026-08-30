@@ -9,9 +9,9 @@
 <em>Unlocking Secure Identities with Precision and Speed</em>
 
 <!-- BADGES -->
-<img src="https://img.shields.io/github/last-commit/daechan0615/FaceRecognition?style=flat&logo=git&logoColor=white&color=0080ff" alt="last-commit">
-<img src="https://img.shields.io/github/languages/top/daechan0615/FaceRecognition?style=flat&color=0080ff" alt="repo-top-language">
-<img src="https://img.shields.io/github/languages/count/daechan0615/FaceRecognition?style=flat&color=0080ff" alt="repo-language-count">
+<img src="https://img.shields.io/github/last-commit/yuzu-tsuki/FaceRecognition?style=flat&logo=git&logoColor=white&color=0080ff" alt="last-commit">
+<img src="https://img.shields.io/github/languages/top/yuzu-tsuki/FaceRecognition?style=flat&color=0080ff" alt="repo-top-language">
+<img src="https://img.shields.io/github/languages/count/yuzu-tsuki/FaceRecognition?style=flat&color=0080ff" alt="repo-language-count">
 
 <em>Built with the tools and technologies:</em>
 
@@ -67,7 +67,7 @@ This project simplifies attendance tracking with an easy-to-use, automated workf
 1. **Clone the repository:**
 
     ```sh
-    git clone https://github.com/daechan0615/FaceRecognition
+    git clone https://github.com/yuzu-tsuki/FaceRecognition
     ```
 
 2. **Navigate to the project directory:**

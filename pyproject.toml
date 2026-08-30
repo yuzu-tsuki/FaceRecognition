@@ -38,7 +38,7 @@ dev = ["pytest>=8"]
 frdb = "face_recognition_doorbell.cli:main"
 
 [project.urls]
-Repository = "https://github.com/daechan0615/FaceRecognition"
+Repository = "https://github.com/yuzu-tsuki/FaceRecognition"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
