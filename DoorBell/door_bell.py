@@ -43,7 +43,9 @@ class DoorBell:
                 entry = attended_list[i].split(',')
                 existing_name = entry[0]
                 if existing_name.lower() == name.lower():
-                    written_date_time = datetime.strptime(entry[1], '%d/%m/%Y %H:%M:%S')
+                    # Every line except the last keeps its trailing '\n' after
+                    # readlines(), which strptime rejects.
+                    written_date_time = datetime.strptime(entry[1].strip(), '%d/%m/%Y %H:%M:%S')
                     print('written date: ' + written_date_time.strftime('%d/%m/%Y %H:%M:%S'))
                     now = datetime.now()
                     print('difference: ' + str((now - written_date_time).total_seconds()))
