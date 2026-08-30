@@ -36,19 +36,21 @@ class WhiteList:
         """
         all_encoded = True
         encodable = []
-        for person in self.white_list:
+        kept_file_names = []
+        # white_list and white_list_names are built in the same order in
+        # __init__, so they can be walked together per file.
+        for person, file_name in zip(self.white_list, self.white_list_names):
             image = person[0]
             encoded_face = face_recognition.face_encodings(image)
             if encoded_face:
                 self._encoded_faces.append(encoded_face[0])
                 encodable.append(person)
+                kept_file_names.append(file_name)
             else:
                 print(f"Warning: no face found for '{person[1]}', removed from white list.")
                 all_encoded = False
         self.white_list = encodable
-        kept_names = {person[1] for person in encodable}
-        self.white_list_names = [name for name in self.white_list_names
-                                 if os.path.splitext(name)[0] in kept_names]
+        self.white_list_names = kept_file_names
         return all_encoded
 
     def get_white_lists(self) -> list[tuple]:
