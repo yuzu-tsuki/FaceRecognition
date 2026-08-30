@@ -1,131 +1,162 @@
+"""The webcam door bell: camera loop, on-screen drawing, and nothing else.
+
+Recognition lives in :mod:`recognizer` and the log in :mod:`attendance`, so this
+module is the only one that needs a camera or a window.
+"""
+
+import logging
+from pathlib import Path
+
 import cv2
 import numpy as np
-import face_recognition
-import os
+
+from . import config, paths
+from .attendance import AttendanceLog
+from .recognizer import FaceMatch, FaceRecognizer
 from .whitelist import WhiteList
-from datetime import datetime
+
+_LOG = logging.getLogger(__name__)
 
 
 class DoorBell:
-    # TODO: Allow parameters such as a path to WL.
-    #  Add a method for adding a whitelist.
-    def __init__(self) -> None:
-        self.w_list = WhiteList('Samples')
-        self.encoded_faces = self.w_list.get_encoded_faces()
-        self.w_list_images = self.w_list.get_white_lists()
+    """Recognises whitelisted faces from a webcam and logs attendance."""
+
+    def __init__(
+        self,
+        samples_path: Path | str | None = None,
+        attendance_path: Path | str | None = None,
+        *,
+        camera_index: int = config.DEFAULT_CAMERA_INDEX,
+    ) -> None:
+        """Builds the whitelist and prepares the attendance log.
+
+        Both paths default to the locations resolved by :mod:`paths`, so the
+        door bell runs from any working directory.
+        """
+        self.samples_path = (
+            Path(samples_path) if samples_path is not None else paths.default_samples_dir()
+        )
+        self.attendance_path = (
+            Path(attendance_path)
+            if attendance_path is not None
+            else paths.default_attendance_file()
+        )
+        self.camera_index = camera_index
+
+        self._attendance = AttendanceLog(self.attendance_path)
+        self.w_list = WhiteList(self.samples_path)
+        self._recognizer = FaceRecognizer.from_white_list(self.w_list)
 
     def view_white_list(self) -> list[tuple]:
+        """Returns the whitelisted people as ``(image, name)`` pairs."""
         return self.w_list.get_white_lists()
 
-    def add_sample(self) -> None:
-        path = 'Samples'
-        w_list_image = os.listdir(path)
+    def add_sample(self) -> list[str]:
+        """Encodes sample images that are not on the whitelist yet.
 
-        for person in w_list_image:
-            img = cv2.imread(f'{path}/{person}')
+        Returns the names newly added. Idempotent: re-running adds nothing, where
+        the previous version re-read the whole directory and duplicated every
+        entry on each call.
+        """
+        known = set(self.w_list.get_white_list_names())
+        added: list[str] = []
+
+        for entry in sorted(self.samples_path.iterdir()):
+            if not entry.is_file() or entry.suffix.lower() not in config.IMAGE_SUFFIXES:
+                continue
+            if entry.name in known:
+                continue
+            img = cv2.imread(str(entry))
+            if img is None:
+                _LOG.warning("Could not read %s, skipping.", entry)
+                continue
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            self.w_list.add_white_list(img, person)
-            print(f"Added {person} to white list.")
-        
-        self.encoded_faces = self.w_list.get_encoded_faces()
-        self.w_list_images = self.w_list.get_white_lists()
-        self.view_white_list()
+            if self.w_list.add_white_list(img, entry.name):
+                added.append(entry.stem)
+                _LOG.info("Added %s to white list.", entry.stem)
+            else:
+                _LOG.warning("No face found in %s, not added.", entry)
+
+        if added:
+            self._recognizer = FaceRecognizer.from_white_list(self.w_list)
+        return added
 
     def mark_attendance(self, name: str) -> bool:
-        """Just a Test method for now"""
-        # TODO: Allow writing duplicate only after 5 minutes of the last one written.
-        path = 'Attendance/Attendance.csv'
-        with open(path, 'r+') as f:
-            attended_list = f.readlines()
+        """Records *name* in the attendance log.
 
-            # This avoids duplicates within 1 minute
-            for i in range(len(attended_list) - 1, -1, -1):
-                entry = attended_list[i].split(',')
-                existing_name = entry[0]
-                if existing_name.lower() == name.lower():
-                    # Every line except the last keeps its trailing '\n' after
-                    # readlines(), which strptime rejects.
-                    written_date_time = datetime.strptime(entry[1].strip(), '%d/%m/%Y %H:%M:%S')
-                    print('written date: ' + written_date_time.strftime('%d/%m/%Y %H:%M:%S'))
-                    now = datetime.now()
-                    print('difference: ' + str((now - written_date_time).total_seconds()))
-                    if (now - written_date_time).total_seconds() >= 60: # 60 sec (1 min)
-                        now = now.strftime('%d/%m/%Y %H:%M:%S')
-                        f.writelines(f'\n{name},{now}')
-                        return True
-                    return False
+        Returns True iff a row was appended; a repeat sighting inside the
+        suppression window is ignored.
+        """
+        return self._attendance.mark(name)
 
-            now = datetime.now()
-            date_string = now.strftime("%d/%m/%Y %H:%M:%S")
-            f.writelines(f'\n{name},{date_string}')
-            return True
+    def annotate(self, frame: np.ndarray) -> list[FaceMatch]:
+        """Draws boxes and labels onto *frame* in place, logging known faces.
 
+        This is the seam that keeps the loop testable: it does everything a
+        single frame needs without touching a camera or a window.
+        """
+        matches = self._recognizer.recognize(frame)
+
+        for match in matches:
+            if match.is_known:
+                color, label = config.KNOWN_BOX_COLOR, match.name
+            else:
+                color, label = config.UNKNOWN_BOX_COLOR, config.UNKNOWN_LABEL
+
+            cv2.rectangle(
+                frame,
+                (match.left, match.top),
+                (match.right, match.bottom),
+                color,
+                config.BOX_THICKNESS,
+            )
+            cv2.putText(
+                frame,
+                label,
+                (match.left + config.LABEL_OFFSET_X, match.top + config.LABEL_OFFSET_Y),
+                cv2.FONT_HERSHEY_PLAIN,
+                config.LABEL_FONT_SCALE,
+                config.LABEL_COLOR,
+                config.BOX_THICKNESS,
+            )
+
+            if match.is_known:
+                _LOG.info(
+                    "Recognized %s, attendance marked: %s",
+                    match.name,
+                    self.mark_attendance(match.name),
+                )
+
+        return matches
 
     def run_door_bell(self) -> None:
-        # TODO: Make sub-function / helper functions for easier management
-        cam = cv2.VideoCapture(0)
+        """Opens the camera and loops until 'q' is pressed or the window closes."""
+        cam = cv2.VideoCapture(self.camera_index)
 
         if not cam.isOpened():
-            print("Error: Could not open camera.")
+            _LOG.error("Could not open camera %s.", self.camera_index)
             return
 
-        while True:
-            succ, frame = cam.read()
+        try:
+            while True:
+                succ, frame = cam.read()
+                if not succ:
+                    _LOG.error("Could not read frame.")
+                    break
 
-            if not succ:
-                print("Error: Could not read frame.")
-                break
+                self.annotate(frame)
+                cv2.imshow(config.WINDOW_TITLE, frame)
 
-            # resizing the image for faster processing
-            frame_small = cv2.resize(frame, (0, 0), None, 0.25, 0.25)
-            frame_small = cv2.cvtColor(frame_small, cv2.COLOR_BGR2RGB)
-
-            face_loc = face_recognition.face_locations(frame_small)
-            encode_frame = face_recognition.face_encodings(frame_small, face_loc)
-
-            for encode_face, face_location in zip(encode_frame, face_loc):
-                # An empty whitelist would make np.argmin raise on an empty
-                # array; treat every face as unknown instead.
-                matched = False
-                if self.encoded_faces:
-                    matches = face_recognition.compare_faces(self.encoded_faces, encode_face)
-                    face_distance = face_recognition.face_distance(self.encoded_faces, encode_face)
-
-                    # print(f"Face distance: {face_distance}")
-
-                    match_index = np.argmin(face_distance)
-                    matched = matches[match_index]
-
-                if matched:
-                    name = self.w_list_images[match_index][1]
-                    print(f"Recognized: {name}")
-
-                    y1, x2, y2, x1 = face_location
-                    y1 *= 4
-                    x2 *= 4
-                    y2 *= 4
-                    x1 *= 4
-
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                    cv2.putText(frame, name, (x1 + 6, y1 - 6), cv2.FONT_HERSHEY_PLAIN,
-                                1.5, (255, 255, 255), 2)
-                    print('Marking Attentance: ' + str(self.mark_attendance(name)))
-                else:
-                    y1, x2, y2, x1 = face_location
-                    y1 *= 4
-                    x2 *= 4
-                    y2 *= 4
-                    x1 *= 4
-
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                    cv2.putText(frame, "Unknown", (x1 + 6, y1 - 6), cv2.FONT_HERSHEY_PLAIN,
-                                1.5, (255, 255, 255), 2)
-
-            cv2.imshow('Door Bell', frame)
-            
-            if cv2.waitKey(1) & 0xFF == ord('q') or cv2.getWindowProperty('Door Bell', cv2.WND_PROP_VISIBLE) < 1:
-                break  
-
-        cam.release()
-        cv2.destroyAllWindows()
-
+                # waitKey has to run first: it pumps the window's event loop, and
+                # getWindowProperty is only meaningful once it has.
+                quit_pressed = (
+                    cv2.waitKey(config.WAIT_KEY_DELAY_MS) & 0xFF == ord(config.QUIT_KEY)
+                )
+                window_closed = (
+                    cv2.getWindowProperty(config.WINDOW_TITLE, cv2.WND_PROP_VISIBLE) < 1
+                )
+                if quit_pressed or window_closed:
+                    break
+        finally:
+            cam.release()
+            cv2.destroyAllWindows()
