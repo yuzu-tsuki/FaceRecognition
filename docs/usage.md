@@ -5,7 +5,7 @@
 Python 3.10 or newer (the pinned numpy 2.2 requires it).
 
 ```sh
-git clone https://github.com/daechan0615/FaceRecognition
+git clone https://github.com/yuzu-tsuki/FaceRecognition
 cd FaceRecognition
 python -m pip install -e .
 ```
@@ -14,6 +14,25 @@ python -m pip install -e .
 `pyproject.toml`, which is the single source of dependency truth.
 
 Add the test dependencies with `python -m pip install -e ".[dev]"`.
+
+### Why the install is editable
+
+The `-e` matters. `paths.project_root()` finds the data directory by walking up
+from the package's own location looking for `pyproject.toml`. An editable install
+leaves the package in your clone, so that walk finds the repository and its
+`data/` directory from any working directory.
+
+A non-editable `pip install .` puts the package in `site-packages`, where there is
+no `pyproject.toml` above it. The walk then falls back to the current working
+directory, so `frdb` only finds `data/` when run from a directory that has one.
+If you install non-editable, point the application at its data explicitly:
+
+```sh
+export DOORBELL_DATA_DIR=/path/to/data   # or pass --samples and --attendance
+```
+
+`frdb` prints the paths it resolved on startup, so a wrong guess is immediately
+visible rather than silent.
 
 ### About the setuptools pin
 
