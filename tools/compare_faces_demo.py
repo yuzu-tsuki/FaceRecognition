@@ -1,52 +1,72 @@
+"""Side-by-side face comparison demo.
+
+A developer utility, not part of the installed package: it shows what
+``compare_faces`` and ``face_distance`` do on two photos of the same person
+versus a photo of somebody else.
+
+Run it from anywhere once the project is installed:
+
+    python tools/compare_faces_demo.py
+"""
+
 import cv2
-import numpy as np
 import face_recognition
-import face_recognition_models
 
-# Load images first, convert their BGR to RGB
-img_elon = face_recognition.load_image_file('DoorBell/Samples/elon_musk1.jpg')
-img_elon = cv2.cvtColor(img_elon, cv2.COLOR_BGR2RGB)
+from face_recognition_doorbell import paths
 
-img_test_elon = face_recognition.load_image_file('DoorBell/Samples/elon_musk2.jpg')
-img_test_elon = cv2.cvtColor(img_test_elon, cv2.COLOR_BGR2RGB)
-
-img_test_2 = face_recognition.load_image_file('DoorBell/Samples/donald_trump1.jpg')
-img_test_2 = cv2.cvtColor(img_test_2, cv2.COLOR_BGR2RGB)
+BOX_COLOR = (255, 255, 0)
+TEXT_COLOR = (0, 0, 255)
+THICKNESS = 2
 
 
-# Face location detecting
-face_location = face_recognition.face_locations(img_elon)[0]
-face_encode_elon = face_recognition.face_encodings(img_elon)[0]
-cv2.rectangle(img_elon, (face_location[3], face_location[0]),                             # Draw a Rectangle on the face
-                        (face_location[1], face_location[2]), (255, 255, 0), 2)
+def load(path):
+    """Loads an image and draws a box around the first face found in it."""
+    image = face_recognition.load_image_file(path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-face_location_test = face_recognition.face_locations(img_test_elon)[0]
-face_encode_test_elon = face_recognition.face_encodings(img_test_elon)[0]
-cv2.rectangle(img_test_elon, (face_location_test[3], face_location_test[0]),
-                             (face_location_test[1], face_location_test[2]), (255, 255, 0), 2)
+    locations = face_recognition.face_locations(image)
+    if not locations:
+        raise SystemExit(f"No face found in {path}")
 
-face_location_test_2 = face_recognition.face_locations(img_test_2)[0]
-face_encode_test_2 = face_recognition.face_encodings(img_test_2)[0]
-cv2.rectangle(img_test_2, (face_location_test_2[3], face_location_test_2[0]),
-                          (face_location_test_2[1], face_location_test_2[2]), (255, 255, 0), 2)
+    top, right, bottom, left = locations[0]
+    cv2.rectangle(image, (left, top), (right, bottom), BOX_COLOR, THICKNESS)
+    return image, face_recognition.face_encodings(image)[0]
 
 
-# Best match when face_distance is lower.
+def compare(image, known_encoding, candidate_encoding):
+    """Annotates *image* with whether it matches, and by what distance."""
+    results = face_recognition.compare_faces([known_encoding], candidate_encoding)
+    distance = face_recognition.face_distance([known_encoding], candidate_encoding)
+    print(results, distance)
+    cv2.putText(
+        image,
+        f"{bool(results[0])}, Distance: {round(distance[0], 2)}",
+        (50, 50),
+        cv2.FONT_HERSHEY_PLAIN,
+        1,
+        TEXT_COLOR,
+        THICKNESS,
+    )
 
-results = face_recognition.compare_faces([face_encode_elon], face_encode_test_elon)
-face_distance = face_recognition.face_distance([face_encode_elon], face_encode_test_elon)
-print(results, face_distance)
-cv2.putText(img_test_elon, f'{bool(results[0])}, Distance: {round(face_distance[0], 2)}',
-            (50,50), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 2)
 
-results = face_recognition.compare_faces([face_encode_elon], face_encode_test_2)
-face_distance = face_recognition.face_distance([face_encode_elon], face_encode_test_2)
-print(results, face_distance)
-cv2.putText(img_test_2, f'{bool(results[0])}, Distance: {round(face_distance[0], 2)}',
-            (50,50), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 2)
+def main() -> None:
+    """Shows the reference face beside a match and a non-match."""
+    data = paths.data_dir()
+    # The reference and the second photo of the same person are deliberately
+    # different files; the decoy comes from the whitelist samples.
+    reference, reference_encoding = load(data / "demo" / "elon_musk1.jpg")
+    same_person, same_encoding = load(data / "samples" / "elon_musk.jpg")
+    other_person, other_encoding = load(data / "samples" / "donald_trump.jpg")
+
+    compare(same_person, reference_encoding, same_encoding)
+    compare(other_person, reference_encoding, other_encoding)
+
+    cv2.imshow("Elon Musk", reference)
+    cv2.imshow("Elon Musk Test", same_person)
+    cv2.imshow("Donald Trump for comparison", other_person)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 
-cv2.imshow('Elon Musk', img_elon)
-cv2.imshow('Elon Musk Test', img_test_elon)
-cv2.imshow('Donald Trump for comparison', img_test_2)
-cv2.waitKey(0)
+if __name__ == "__main__":
+    main()
