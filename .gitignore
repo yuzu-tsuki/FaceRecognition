@@ -5,3 +5,18 @@ __pycache__/
 
 .idea
 .DS_Store
+
+# Runtime output: the attendance log is created by the application on demand
+/data/attendance/*.csv
+
+# Packaging and test artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
